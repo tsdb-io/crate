@@ -21,7 +21,6 @@
 
 package io.crate.expression.scalar.timestamp;
 
-import com.google.common.math.LongMath;
 import io.crate.data.Input;
 import io.crate.expression.scalar.ScalarFunctionModule;
 import io.crate.metadata.FunctionIdent;
@@ -31,16 +30,17 @@ import io.crate.metadata.TransactionContext;
 import io.crate.metadata.functions.Signature;
 import io.crate.types.DataTypes;
 
-import javax.annotation.Nullable;
-import java.math.RoundingMode;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
-public class CurrentTimestampFunction extends Scalar<Long, Integer> {
+import static io.crate.types.TypeSignature.parseTypeSignature;
 
-    public static final String NAME = "current_timestamp";
-    public static final int DEFAULT_PRECISION = 3;
+public class CurrentTimeFunction extends Scalar<Long, Integer> {
+
+    public static final String NAME = "current_time";
 
     public static final FunctionInfo INFO = new FunctionInfo(
         new FunctionIdent(NAME, List.of(DataTypes.INTEGER)),
@@ -52,51 +52,11 @@ public class CurrentTimestampFunction extends Scalar<Long, Integer> {
         module.register(
             Signature.scalar(
                 NAME,
-                DataTypes.INTEGER.getTypeSignature(),
-                DataTypes.TIMESTAMPZ.getTypeSignature()
+                parseTypeSignature("integer"),
+                parseTypeSignature("timestamp with time zone")
             ),
-            (signature, args) -> new CurrentTimestampFunction(signature)
+            args -> new CurrentTimeFunction()
         );
-    }
-
-    private final Signature signature;
-
-    public CurrentTimestampFunction(Signature signature) {
-        this.signature = signature;
-    }
-
-    @Override
-    @SafeVarargs
-    public final Long evaluate(TransactionContext txnCtx, Input<Integer>... args) {
-        return applyPrecision(txnCtx.currentTimeMillis(), args);
-    }
-
-    static long applyPrecision(long millis, Input<Integer>... args) {
-        int factor;
-        Integer precision = DEFAULT_PRECISION;
-        if (args.length == 1) {
-            precision = args[0].value();
-            if (precision == null) {
-                throw new IllegalArgumentException(String.format(
-                    Locale.ENGLISH,"NULL precision not supported for %s", NAME));
-            }
-        }
-        switch (precision) {
-            case 0:
-                factor = 1000;
-                break;
-            case 1:
-                factor = 100;
-                break;
-            case 2:
-                factor = 10;
-                break;
-            case 3:
-                return millis;
-            default:
-                throw new IllegalArgumentException("Precision must be between 0 and 3");
-        }
-        return LongMath.divide(millis, factor, RoundingMode.DOWN) * factor;
     }
 
     @Override
@@ -104,9 +64,16 @@ public class CurrentTimestampFunction extends Scalar<Long, Integer> {
         return INFO;
     }
 
-    @Nullable
     @Override
-    public Signature signature() {
-        return signature;
+    @SafeVarargs
+    public final Long evaluate(TransactionContext txnCtx, Input<Integer>... args) {
+        long now = txnCtx.currentTimeMillis();
+        long justDate = Instant
+            .ofEpochMilli(now)
+            .atZone(ZoneOffset.UTC)
+            .truncatedTo(ChronoUnit.DAYS)
+            .toInstant()
+            .toEpochMilli();
+        return CurrentTimestampFunction.applyPrecision(now - justDate, args);
     }
 }
