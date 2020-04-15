@@ -826,11 +826,11 @@ in absolute milliseconds. The same time value is returned for every invocation o
 a single statement, and will match the time portion of invocations to
 ``CURRENT_TIMESTAMP`` in the same statement.
 
-synopsis::
+Synopsis::
 
     CURRENT_TIME [ ( precision ) ]
 
-Where precision is defined in :ref:`current_timestamp`.
+Where ``precision`` is defined in :ref:`current_timestamp`.
 
 .. _now:
 
