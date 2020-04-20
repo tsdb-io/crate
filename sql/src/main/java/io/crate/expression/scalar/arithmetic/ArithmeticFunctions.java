@@ -22,31 +22,17 @@
 
 package io.crate.expression.scalar.arithmetic;
 
-import com.google.common.collect.ImmutableList;
 import io.crate.expression.scalar.ScalarFunctionModule;
-import io.crate.expression.symbol.Function;
-import io.crate.expression.symbol.Symbol;
 import io.crate.metadata.BaseFunctionResolver;
-import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.FunctionInfo;
-import io.crate.metadata.Scalar;
+import io.crate.metadata.functions.Signature;
 import io.crate.metadata.functions.params.FuncParams;
 import io.crate.metadata.functions.params.Param;
-import io.crate.types.ByteType;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
-import io.crate.types.DoubleType;
-import io.crate.types.FloatType;
-import io.crate.types.IntegerType;
-import io.crate.types.LongType;
-import io.crate.types.ShortType;
-import io.crate.types.TimestampType;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import java.util.function.BinaryOperator;
 
 public class ArithmeticFunctions {
@@ -64,61 +50,180 @@ public class ArithmeticFunctions {
         public static final String MOD = "mod";
     }
 
-    public static void register(ScalarFunctionModule module) {
-        module.register(Names.ADD, new ArithmeticFunctionResolver(
-            Names.ADD,
-            "+",
-            FunctionInfo.DETERMINISTIC_AND_COMPARISON_REPLACEMENT,
-            Math::addExact,
-            Double::sum,
-            Math::addExact,
-            Float::sum
-        ));
-        module.register(Names.SUBTRACT, new ArithmeticFunctionResolver(
-            Names.SUBTRACT,
-            "-",
-            FunctionInfo.DETERMINISTIC_ONLY,
-            Math::subtractExact,
-            (arg0, arg1) -> arg0 - arg1,
-            Math::subtractExact,
-            (arg0, arg1) -> arg0 - arg1
-        ));
-        module.register(Names.MULTIPLY, new ArithmeticFunctionResolver(
-            Names.MULTIPLY,
-            "*",
-            FunctionInfo.DETERMINISTIC_ONLY,
-            Math::multiplyExact,
-            (arg0, arg1) -> arg0 * arg1,
-            Math::multiplyExact,
-            (arg0, arg1) -> arg0 * arg1
-        ));
-        module.register(Names.DIVIDE, new ArithmeticFunctionResolver(
-            Names.DIVIDE,
-            "/",
-            FunctionInfo.DETERMINISTIC_ONLY,
-            (arg0, arg1) -> arg0 / arg1,
-            (arg0, arg1) -> arg0 / arg1,
-            (arg0, arg1) -> arg0 / arg1,
-            (arg0, arg1) -> arg0 / arg1
-        ));
+    static List<String> ops = List.of(Names.ADD,
+                                      Names.SUBTRACT,
+                                      Names.MULTIPLY,
+                                      Names.DIVIDE,
+                                      Names.MOD,
+                                      Names.MODULUS);
 
-        java.util.function.Function<String, ArithmeticFunctionResolver> modFunctionResolverFactory =
-            name -> new ArithmeticFunctionResolver(
-                name,
-                "%",
-                FunctionInfo.DETERMINISTIC_ONLY,
-                (arg0, arg1) -> arg0 % arg1,
-                (arg0, arg1) -> arg0 % arg1,
-                (arg0, arg1) -> arg0 % arg1,
-                (arg0, arg1) -> arg0 % arg1
+    public static void register(ScalarFunctionModule module) {
+        for (var op : ops) {
+            for (var supportType : List.of(DataTypes.BYTE, DataTypes.SHORT, DataTypes.INTEGER)) {
+                final BinaryOperator<Integer> o;
+                switch (op) {
+                    case Names.ADD:
+                        o = Math::addExact;
+                        break;
+                    case Names.SUBTRACT:
+                        o = Math::subtractExact;
+                        break;
+
+                    case Names.MULTIPLY:
+                        o = Math::multiplyExact;
+                        break;
+
+                    case Names.DIVIDE:
+                        o = (x, y) -> x / y;
+                        break;
+
+                    case Names.MOD:
+                    case Names.MODULUS:
+                        o = (x, y) -> x % y;
+                        break;
+
+                    default:
+                        throw new IllegalStateException("Unexpected value: " + "");
+                }
+                module.register(
+                    Signature.scalar(
+                        op,
+                        supportType.getTypeSignature(),
+                        supportType.getTypeSignature(),
+                        DataTypes.INTEGER.getTypeSignature()
+                    ),
+                    args -> new BinaryScalar<>(
+                        o,
+                        op,
+                        DataTypes.INTEGER,
+                        FunctionInfo.DETERMINISTIC_ONLY)
+                );
+            }
+
+            for (var supportType : List.of(DataTypes.LONG, DataTypes.TIMESTAMPZ, DataTypes.TIMESTAMP)) {
+                final BinaryOperator<Long> o;
+                switch (op) {
+                    case Names.ADD:
+                        o = Math::addExact;
+                        break;
+
+                    case Names.SUBTRACT:
+                        o = Math::subtractExact;
+                        break;
+
+                    case Names.MULTIPLY:
+                        o = Math::multiplyExact;
+                        break;
+
+                    case Names.DIVIDE:
+                        o = (x, y) -> x / y;
+                        break;
+
+                    case Names.MOD:
+                    case Names.MODULUS:
+                        o = (x, y) -> x % y;
+                        break;
+
+                    default:
+                        throw new IllegalStateException("Unexpected value: " + "");
+                }
+                module.register(
+                    Signature.scalar(
+                        op,
+                        supportType.getTypeSignature(),
+                        supportType.getTypeSignature(),
+                        DataTypes.INTEGER.getTypeSignature()
+                    ),
+                    args -> new BinaryScalar<>(
+                        o,
+                        op,
+                        DataTypes.LONG,
+                        FunctionInfo.DETERMINISTIC_ONLY)
+                );
+            }
+            BinaryOperator<Double> o;
+            switch (op) {
+                case Names.ADD:
+                    o = Double::sum;
+                    break;
+
+                case Names.SUBTRACT:
+                    o = (x, y) -> x - y;
+                    break;
+
+                case Names.MULTIPLY:
+                    o = (x, y) -> x * y;
+                    break;
+
+                case Names.DIVIDE:
+                    o = (x, y) -> x / y;
+                    break;
+
+                case Names.MOD:
+                case Names.MODULUS:
+                    o = (x, y) -> x % y;
+                    break;
+
+                default:
+                    throw new IllegalStateException("Unexpected value: " + "");
+            }
+            module.register(
+                Signature.scalar(
+                    op,
+                    DataTypes.DOUBLE.getTypeSignature(),
+                    DataTypes.DOUBLE.getTypeSignature(),
+                    DataTypes.DOUBLE.getTypeSignature()
+                ),
+                args -> new BinaryScalar<>(
+                    o,
+                    op,
+                    DataTypes.DOUBLE,
+                    FunctionInfo.DETERMINISTIC_ONLY)
+            );
+            BinaryOperator<Float> opp;
+            switch (op) {
+                case Names.ADD:
+                    opp = Float::sum;
+                    break;
+                case Names.SUBTRACT:
+                    opp = (x, y) -> x - y;
+                    break;
+
+                case Names.MULTIPLY:
+                    opp = (x, y) -> x * y;
+                    break;
+
+                case Names.DIVIDE:
+                    opp = (x, y) -> x / y;
+                    break;
+
+                case Names.MOD:
+                case Names.MODULUS:
+                    opp = (x, y) -> x % y;
+                    break;
+                default:
+                    throw new IllegalStateException("Unexpected value: " + "");
+            }
+            module.register(
+                Signature.scalar(
+                    op,
+                    DataTypes.FLOAT.getTypeSignature(),
+                    DataTypes.FLOAT.getTypeSignature(),
+                    DataTypes.FLOAT.getTypeSignature()
+                ),
+                args -> new BinaryScalar<>(
+                    opp,
+                    op,
+                    DataTypes.FLOAT,
+                    FunctionInfo.DETERMINISTIC_ONLY)
             );
 
-        module.register(Names.MODULUS, modFunctionResolverFactory.apply(Names.MODULUS));
-        module.register(Names.MOD, modFunctionResolverFactory.apply(Names.MOD));
-        module.register(Names.POWER, new DoubleFunctionResolver(
-            Names.POWER,
-            Math::pow
-        ));
+            module.register(Names.POWER, new
+                DoubleFunctionResolver(
+                Names.POWER,
+                Math::pow
+            ));
+        }
     }
 
     static final class DoubleFunctionResolver extends BaseFunctionResolver {
@@ -136,86 +241,5 @@ public class ArithmeticFunctions {
         public FunctionImplementation getForTypes(List<DataType> args) throws IllegalArgumentException {
             return new BinaryScalar<>(doubleFunction, name, DataTypes.DOUBLE, FunctionInfo.DETERMINISTIC_ONLY);
         }
-    }
-
-    static final class ArithmeticFunctionResolver extends BaseFunctionResolver {
-
-        private final String name;
-        private final String operator;
-        private final Set<FunctionInfo.Feature> features;
-
-        private final BinaryOperator<Double> doubleFunction;
-        private final BinaryOperator<Integer> integerFunction;
-        private final BinaryOperator<Long> longFunction;
-        private final BinaryOperator<Float> floatFunction;
-
-        ArithmeticFunctionResolver(String name,
-                                   String operator,
-                                   Set<FunctionInfo.Feature> features,
-                                   BinaryOperator<Integer> integerFunction,
-                                   BinaryOperator<Double> doubleFunction,
-                                   BinaryOperator<Long> longFunction,
-                                   BinaryOperator<Float> floatFunction) {
-            super(FuncParams.builder(ARITHMETIC_TYPE, ARITHMETIC_TYPE).build());
-            this.name = name;
-            this.operator = operator;
-            this.doubleFunction = doubleFunction;
-            this.integerFunction = integerFunction;
-            this.longFunction = longFunction;
-            this.floatFunction = floatFunction;
-            this.features = features;
-        }
-
-        @Override
-        public FunctionImplementation getForTypes(List<DataType> dataTypes) throws IllegalArgumentException {
-            assert dataTypes.size() == 2 : "Arithmetic operator must receive two arguments";
-            DataType<?> fst = dataTypes.get(0);
-            DataType<?> snd = dataTypes.get(1);
-
-            if (fst.equals(snd)) {
-                final Scalar<?, ?> scalar;
-                switch (fst.id()) {
-                    case DoubleType.ID:
-                        scalar = new BinaryScalar<>(doubleFunction, name, DataTypes.DOUBLE, features);
-                        break;
-
-                    case FloatType.ID:
-                        scalar = new BinaryScalar<>(floatFunction, name, DataTypes.FLOAT, features);
-                        break;
-
-                    case ByteType.ID:
-                    case ShortType.ID:
-                    case IntegerType.ID:
-                        scalar = new BinaryScalar<>(integerFunction, name, DataTypes.INTEGER, features);
-                        break;
-                    case LongType.ID:
-                    case TimestampType.ID_WITH_TZ:
-                    case TimestampType.ID_WITHOUT_TZ:
-                        scalar = new BinaryScalar<>(longFunction, name, DataTypes.LONG, features);
-                        break;
-
-                    default:
-                        throw new UnsupportedOperationException(
-                            operator + " is not supported on expressions of type " + fst.getName());
-                }
-                return scalar;
-            }
-
-            throw new UnsupportedOperationException(
-                String.format(Locale.ENGLISH, "Arithmetic operation are not supported for type %s %s", fst, snd));
-        }
-    }
-
-    public static Function of(String name, Symbol first, Symbol second, Set<FunctionInfo.Feature> features) {
-        List<DataType> dataTypes = Arrays.asList(first.valueType(), second.valueType());
-        return new Function(
-            new FunctionInfo(
-                new FunctionIdent(name, dataTypes),
-                dataTypes.get(0),
-                FunctionInfo.Type.SCALAR,
-                features
-            ),
-            ImmutableList.of(first, second)
-        );
     }
 }
