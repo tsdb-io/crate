@@ -30,13 +30,12 @@ import io.crate.metadata.TransactionContext;
 import io.crate.metadata.functions.Signature;
 import io.crate.types.DataTypes;
 
+import javax.annotation.Nullable;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
-
-import static io.crate.types.TypeSignature.parseTypeSignature;
 
 public class CurrentTimeFunction extends Scalar<Long, Integer> {
 
@@ -52,16 +51,17 @@ public class CurrentTimeFunction extends Scalar<Long, Integer> {
         module.register(
             Signature.scalar(
                 NAME,
-                parseTypeSignature("integer"),
-                parseTypeSignature("timestamp with time zone")
+                DataTypes.INTEGER.getTypeSignature(),
+                DataTypes.TIMESTAMPZ.getTypeSignature()
             ),
-            args -> new CurrentTimeFunction()
+            (signature, args) -> new CurrentTimeFunction(signature)
         );
     }
 
-    @Override
-    public FunctionInfo info() {
-        return INFO;
+    private final Signature signature;
+
+    public CurrentTimeFunction(Signature signature) {
+        this.signature = signature;
     }
 
     @Override
@@ -75,5 +75,16 @@ public class CurrentTimeFunction extends Scalar<Long, Integer> {
             .toInstant()
             .toEpochMilli();
         return CurrentTimestampFunction.applyPrecision(now - justDate, args);
+    }
+
+    @Override
+    public FunctionInfo info() {
+        return INFO;
+    }
+
+    @Nullable
+    @Override
+    public Signature signature() {
+        return signature;
     }
 }
